@@ -1,0 +1,76 @@
+{
+  "name": "gemizero",
+  "version": "1.0.0",
+  "description": "Unofficial Gemini API — no login, no keys, no cost. Reverse-engineered batchexecute protocol.",
+  "keywords": [
+    "gemini",
+    "google-gemini",
+    "gemini-api",
+    "unofficial",
+    "free",
+    "no-key",
+    "openai-compatible",
+    "ai",
+    "llm"
+  ],
+  "homepage": "https://github.com/itsmejrb1/gemizero#readme",
+  "bugs": {
+    "url": "https://github.com/itsmejrb1/gemizero/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Jr Busaco",
+    "url": "https://github.com/itsmejrb1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itsmejrb1/gemizero.git"
+  },
+  "type": "module",
+  "main": "index.js",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./index.js"
+    },
+    "./client": {
+      "types": "./types/src/client.d.ts",
+      "default": "./src/client.js"
+    }
+  },
+  "bin": {
+    "gemizero": "bin/gemizero.js"
+  },
+  "scripts": {
+    "start": "node bin/gemizero.js",
+    "dev": "node --watch bin/gemizero.js",
+    "test": "node --test test/",
+    "lint": "eslint src/ index.js",
+    "format": "prettier --write src/ index.js",
+    "typecheck": "tsc --noEmit",
+    "build:types": "tsc --emitDeclarationOnly",
+    "prepublishOnly": "npm run build:types && npm run lint && npm run typecheck"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src",
+    "bin",
+    "types",
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
+  }
+}
