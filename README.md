@@ -18,8 +18,8 @@ curl http://localhost:5000/v1/chat/completions \
 - **No authentication** — works without a Google account or API key
 - **OpenAI-compatible** — drop-in replacement for any OpenAI SDK
 - **Streaming** — SSE-formatted stream responses via `stream: true`
-- **Multi-turn** — pass `metadata` from the previous response to continue conversations
-- **Multiple models** — Flash, Pro, Thinking, and their plus variants
+- **Multi-turn** — conversation history is preserved via text context
+- **Auto-discovered models** — fetches available models from Google dynamically
 
 ## Usage
 
@@ -65,13 +65,12 @@ for await (const part of stream) {
   process.stdout.write(part.choices[0]?.delta?.content || '');
 }
 
-// Multi-turn
-const meta = chat.choices[0].message.metadata;
+// Multi-turn (text context is auto-preserved)
 const followUp = await gemini.chat.completions.create({
   model: 'gemini-3-flash',
   messages: [
     { role: 'user', content: 'hello' },
-    { role: 'assistant', content: chat.choices[0].message.content, metadata: meta },
+    { role: 'assistant', content: chat.choices[0].message.content },
     { role: 'user', content: 'what did I say?' },
   ],
 });
@@ -93,14 +92,15 @@ const followUp = await gemini.chat.completions.create({
 
 ### Models
 
-| ID                             | Description              |
-|--------------------------------|--------------------------|
-| `gemini-3-flash`               | Fast, lightweight        |
-| `gemini-3-flash-plus`          | Flash with plus features |
-| `gemini-3-pro`                 | High quality             |
-| `gemini-3-pro-plus`            | Pro with plus features   |
-| `gemini-3-flash-thinking`      | Flash + reasoning        |
-| `gemini-3-flash-thinking-plus` | Flash thinking + plus    |
+Model IDs are **fetched dynamically from Google's init page** on every startup.
+Known hex IDs get mapped to their display names; unknown ones appear as `model-<truncated-hex>`.
+
+```sh
+curl http://localhost:5000/v1/models
+```
+
+The first available model is used as the default when none is specified.
+A static fallback list is used if the dynamic fetch fails.
 
 ## How It Works
 
@@ -111,8 +111,9 @@ billing, and no Google account required.
 The library:
 
 1. Fetches `gemini.google.com/app` to obtain session cookies and extract `WIZ_global_data`
-2. Sends requests to `BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate` using Google's `batchexecute` length-prefixed protocol
-3. Parses the deeply nested JSON response and extracts model output
+2. Parses the available model IDs from the embedded `xjRbsb` batch entry — known hex IDs get proper names, unknown ones appear as `model-xxxx`
+3. Sends requests to `BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate` using Google's `batchexecute` length-prefixed protocol
+4. Parses the deeply nested JSON response and extracts model output
 
 Because it relies on the web-facing API, there is **no guarantee of uptime or
 rate limits**. Google may change the protocol at any time.
@@ -121,13 +122,13 @@ rate limits**. Google may change the protocol at any time.
 
 ```
 src/
-├── client.js      # GeminiClient — session management, send & stream messages
-├── constants.js   # Endpoints, model IDs, defaults
+├── client.js      # GeminiClient — session mgmt, send & stream, auth retry, concurrency
+├── constants.js   # Endpoints, fallback model IDs, defaults
 ├── errors.js      # Error classes (GeminiError, InitError, APIError, StreamError)
-├── parser.js      # batchexecute response parser + streaming parser
-├── protocol.js    # Payload builders, header generators
-├── request.js     # HTTP client (native fetch wrapper)
-└── server.js      # Express app — OpenAI-compatible HTTP API
+├── parser.js      # batchexecute response parser + incremental streaming parser
+├── protocol.js    # 69-element payload builders + header generators
+├── request.js     # Native fetch wrapper (request + requestStream)
+└── server.js      # Express app — OpenAI-compatible HTTP API, SSE streaming
 ```
 
 ## License
