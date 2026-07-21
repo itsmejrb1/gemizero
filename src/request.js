@@ -13,38 +13,56 @@
  * @property {string} cookies
  */
 
+const REQUEST_TIMEOUT = 30_000;
+
 /**
  * @param {string} url
- * @param {RequestOptions} [options]
+ * @param {RequestOptions & { signal?: AbortSignal }} [options]
  * @returns {Promise<RequestResult>}
  */
 export async function request(url, options = {}) {
-  const response = await fetch(url, {
-    method: options.method || 'GET',
-    headers: options.headers,
-    body: options.body || undefined,
-    redirect: 'follow',
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
-  return {
-    status: response.status,
-    headers: response.headers,
-    body: await response.text(),
-    cookies: extractCookies(response.headers),
-  };
+  try {
+    const response = await fetch(url, {
+      method: options.method || 'GET',
+      headers: options.headers,
+      body: options.body || undefined,
+      redirect: 'follow',
+      signal: options.signal || controller.signal,
+    });
+
+    return {
+      status: response.status,
+      headers: response.headers,
+      body: await response.text(),
+      cookies: extractCookies(response.headers),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**
  * @param {string} url
- * @param {RequestOptions} [options]
+ * @param {RequestOptions & { signal?: AbortSignal }} [options]
  * @returns {Promise<Response>}
  */
 export async function requestStream(url, options = {}) {
-  return fetch(url, {
-    method: options.method || 'GET',
-    headers: options.headers,
-    body: options.body || undefined,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+  try {
+    return fetch(url, {
+      method: options.method || 'GET',
+      headers: options.headers,
+      body: options.body || undefined,
+      signal: options.signal || controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**

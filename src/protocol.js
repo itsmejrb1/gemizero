@@ -64,7 +64,7 @@ export function buildInnerPayload(prompt, language, metadata) {
 
   let reqMetadata = DEFAULT_METADATA;
   if (metadata) {
-    if (Array.isArray(metadata) && metadata.length > 0 && metadata.length < 10) {
+      if (Array.isArray(metadata) && metadata.length > 0 && metadata.length <= DEFAULT_METADATA.length) {
       reqMetadata = [...DEFAULT_METADATA];
       reqMetadata[0] = String(metadata[0] ?? '');
       reqMetadata[1] = String(metadata[1] ?? '');
@@ -91,7 +91,7 @@ export function buildInnerPayload(prompt, language, metadata) {
 
   // Generation identity
   payload[53] = 0;  // generation version
-  payload[F.GENERATION_ID] = crypto.randomUUID().toUpperCase();
+  payload[F.GENERATION_ID] = crypto.randomUUID().toUpperCase().replace(/-/g, '');
   payload[61] = [];  // additional context (often empty)
   payload[F.LAST] = 2;
 

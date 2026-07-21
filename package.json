@@ -45,8 +45,8 @@
   "scripts": {
     "start": "node bin/gemizero.js",
     "dev": "node --watch bin/gemizero.js",
-    "test": "node --test test/",
-    "lint": "eslint src/ index.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "lint": "eslint src/ index.js test/",
     "format": "prettier --write src/ index.js",
     "typecheck": "tsc --noEmit",
     "build:types": "tsc --emitDeclarationOnly",

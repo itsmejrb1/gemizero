@@ -7,6 +7,8 @@ export default [
       ecmaVersion: 2022,
       sourceType: 'module',
       globals: {
+        AbortController: 'readonly',
+        clearTimeout: 'readonly',
         console: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',

@@ -17,7 +17,7 @@ before(async () => {
 });
 
 after(() => {
-  if (server) server.close();
+  if (server) { server.close(); }
 });
 
 describe('server', () => {
@@ -62,6 +62,32 @@ describe('server', () => {
   it('returns 404 for unknown routes', async () => {
     const res = await fetch(`${BASE}/unknown`);
     assert.equal(res.status, 404);
+  });
+});
+
+describe('streaming', () => {
+  it('POST /v1/chat/completions?stream=true returns SSE headers', async () => {
+    const res = await fetch(`${BASE}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        stream: true,
+        messages: [{ role: 'user', content: 'Hello' }],
+      }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'text/event-stream');
+    assert.equal(res.headers.get('cache-control'), 'no-cache');
+    assert.equal(res.headers.get('connection'), 'keep-alive');
+  });
+
+  it('POST /v1/chat/completions?stream=true validates messages', async () => {
+    const res = await fetch(`${BASE}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ stream: true, messages: [] }),
+    });
+    assert.equal(res.status, 400);
   });
 });
 
