@@ -6,6 +6,7 @@ import { buildInnerPayload, buildGenerateRequest, buildRequestHeaders } from './
 
 const INIT_REQID = Math.floor(Math.random() * 90000) + 10000;
 const REQID_STEP = 100000;
+const MAX_CONCURRENCY = 3;
 
 export class GeminiClient {
   #cookies = '';
@@ -15,10 +16,11 @@ export class GeminiClient {
   #reqid = INIT_REQID;
   #modelId = MODEL_IDS['gemini-3-flash'];
   #ready = false;
+  #concurrency = 0;
+  /** @type {(() => void)[]} */
+  #resolveQueue = [];
 
-  get ready() {
-    return this.#ready;
-  }
+  get ready() { return this.#ready; }
 
   /**
    * @param {string} [cookieStr]
@@ -49,17 +51,19 @@ export class GeminiClient {
    * @returns {Promise<import('./parser.js').GeminiResponse>}
    */
   async sendMessage(prompt, { model = 'gemini-3-flash', metadata } = {}) {
-    const { url, body } = this.#buildRequest(prompt, model, metadata);
+    return this.#withRetry(async () => {
+      const { url, body } = this.#buildRequest(prompt, model, metadata);
 
-    const res = await request(url, {
-      method: 'POST',
-      headers: buildRequestHeaders(this.#cookies, this.#modelId),
-      body,
+      const res = await request(url, {
+        method: 'POST',
+        headers: buildRequestHeaders(this.#cookies, this.#modelId),
+        body,
+      });
+
+      if (res.status !== 200) { throw new APIError(res.status, res.body); }
+
+      return extractResponse(parsePayload(res.body));
     });
-
-    if (res.status !== 200) { throw new APIError(res.status, res.body); }
-
-    return extractResponse(parsePayload(res.body));
   }
 
   /**
@@ -70,11 +74,21 @@ export class GeminiClient {
   async *streamMessage(prompt, { model = 'gemini-3-flash', metadata } = {}) {
     const { url, body } = this.#buildRequest(prompt, model, metadata);
 
-    const response = await requestStream(url, {
+    let response = await requestStream(url, {
       method: 'POST',
       headers: buildRequestHeaders(this.#cookies, this.#modelId),
       body,
     });
+
+    if (response.status === 401 || response.status === 403) {
+      await this.#reinit();
+      const { url: url2, body: body2 } = this.#buildRequest(prompt, model, metadata);
+      response = await requestStream(url2, {
+        method: 'POST',
+        headers: buildRequestHeaders(this.#cookies, this.#modelId),
+        body: body2,
+      });
+    }
 
     if (!response.ok) {
       throw new APIError(response.status, await response.text().catch(() => ''));
@@ -98,6 +112,62 @@ export class GeminiClient {
     } finally {
       reader.releaseLock();
     }
+  }
+
+  /**
+   * @template T
+   * @param {() => Promise<T>} fn
+   * @param {number} [retries]
+   * @returns {Promise<T>}
+   */
+  async #withRetry(fn, retries = 1) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await this.#synchronized(fn);
+      } catch (err) {
+        if (err instanceof APIError && (err.status === 401 || err.status === 403) && attempt < retries) {
+          await this.#reinit();
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error('Unreachable');
+  }
+
+  /**
+   * Limit concurrent requests to MAX_CONCURRENCY using a promise-based queue.
+   * @template T
+   * @param {() => Promise<T>} fn
+   * @returns {Promise<T>}
+   */
+  #synchronized(fn) {
+    if (this.#concurrency < MAX_CONCURRENCY) {
+      this.#concurrency++;
+      return fn().finally(() => { this.#concurrency--; this.#drainQueue(); });
+    }
+
+    return new Promise((resolve, reject) => {
+      this.#resolveQueue.push(() => {
+        this.#concurrency++;
+        fn().then(resolve, reject).finally(() => { this.#concurrency--; this.#drainQueue(); });
+      });
+    });
+  }
+
+  #drainQueue() {
+    while (this.#resolveQueue.length > 0 && this.#concurrency < MAX_CONCURRENCY) {
+      const next = this.#resolveQueue.shift();
+      if (next) { next(); }
+    }
+  }
+
+  async #reinit() {
+    this.#ready = false;
+    this.#cookies = '';
+    this.#buildLabel = null;
+    this.#sessionId = null;
+    await this.init();
   }
 
   /**

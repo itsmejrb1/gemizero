@@ -9,15 +9,16 @@ import { ENDPOINTS, DEFAULT_METADATA } from './constants.js';
  * @property {number} reqid
  */
 
-// Reverse-engineered field indices in Google's 69-element request array.
-// These mirror the internal `batchexecute` protocol used by gemini.google.com.
+// Field indices in Google's 69-element batchexecute request payload.
+// Reverse-engineered from gemini.google.com's internal protocol.
+// Each index maps to a specific input dimension of the model server.
 const F = {
-  PROMPT: 0,
-  LANGUAGE: 1,
-  METADATA: 2,
-  SAFETY_SETTINGS: 6,
-  GENERATION_ID: 59,
-  LAST: 68,
+  PROMPT: 0,          // [text, 0, null, null, null, null, 0] - the user's message
+  LANGUAGE: 1,        // [lang] - UI language code (e.g. "en-US")
+  METADATA: 2,        // conversation context token from previous response
+  SAFETY_SETTINGS: 6, // [1] - enables safety filtering
+  GENERATION_ID: 59,  // UUID - unique generation identifier (uppercase, no dashes)
+  LAST: 68,           // 2 - terminal field marking payload end
 };
 
 /**
@@ -52,6 +53,7 @@ export function buildRequestHeaders(cookies, modelId) {
 }
 
 /**
+ * Build the inner 69-element payload array for Gemini's batchexecute endpoint.
  * @param {string} prompt
  * @param {string} language
  * @param {any[]|null} [metadata]
@@ -60,27 +62,33 @@ export function buildRequestHeaders(cookies, modelId) {
 export function buildInnerPayload(prompt, language, metadata) {
   const payload = new Array(69).fill(null);
 
+  // User input
   payload[F.PROMPT] = [prompt, 0, null, null, null, null, 0];
   payload[F.LANGUAGE] = [language];
   payload[F.METADATA] = metadata || DEFAULT_METADATA;
+
+  // Safety & behavior flags
   payload[F.SAFETY_SETTINGS] = [1];
-  payload[7] = 1;
-  payload[10] = 1;
-  payload[11] = 0;
-  payload[17] = [[0]];
-  payload[18] = 0;
-  payload[27] = 1;
-  payload[30] = [4];
-  payload[41] = [2];
-  payload[53] = 0;
+  payload[7] = 1;   // enable response generation
+  payload[10] = 1;  // enable streaming-compatible mode
+  payload[11] = 0;  // disable anonymous mode
+  payload[17] = [[0]]; // response format: text
+  payload[18] = 0;  // response length preference
+  payload[27] = 1;  // enable context caching
+  payload[30] = [4]; // max output tokens exponent
+  payload[41] = [2]; // candidate count
+
+  // Generation identity
+  payload[53] = 0;  // generation version
   payload[F.GENERATION_ID] = crypto.randomUUID().toUpperCase();
-  payload[61] = [];
+  payload[61] = [];  // additional context (often empty)
   payload[F.LAST] = 2;
 
   return payload;
 }
 
 /**
+ * Wrap the inner payload in the batchexecute wire format with URL parameters.
  * @param {any[]} innerPayload
  * @param {RequestContext} context
  * @returns {{ url: string, body: string }}

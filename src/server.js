@@ -16,21 +16,36 @@ async function getClient() {
 }
 
 /**
+ * Process an OpenAI-format messages array into prompt + metadata.
+ * Builds conversation context from prior messages when no metadata token is available.
  * @param {{ role: string, content: string, metadata?: any[] }[]} messages
  * @returns {{ prompt: string, metadata: any[]|null }}
  */
-function findLastUserMessage(messages) {
+export function processMessages(messages) {
   let prompt = '';
   let metadata = null;
+  /** @type {string[]} */
+  const contextParts = [];
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
+
     if (!prompt && msg.role === 'user') {
       prompt = msg.content;
-    } else if (msg.role === 'assistant' && msg.metadata) {
-      metadata = msg.metadata;
-      break;
+    } else if (msg.role === 'assistant') {
+      if (!metadata && msg.metadata) { metadata = msg.metadata; }
+      contextParts.unshift(`Assistant: ${msg.content}`);
+    } else if (msg.role === 'user') {
+      contextParts.unshift(`User: ${msg.content}`);
     }
+  }
+
+  if (!prompt) {
+    return { prompt: '', metadata: null };
+  }
+
+  if (contextParts.length > 0) {
+    prompt = `${contextParts.join('\n')}\nUser: ${prompt}`;
   }
 
   return { prompt, metadata };
@@ -49,8 +64,6 @@ function asyncHandler(fn) {
 function createTimestamp() {
   return Math.floor(Date.now() / 1000);
 }
-
-// Middleware
 
 /**
  * @param {import('express').Request} req
@@ -86,8 +99,6 @@ function notFoundHandler(_req, res) {
   res.status(404).json({ error: { message: 'Not found' } });
 }
 
-// Route handlers
-
 /**
  * @param {import('express').Request} _req
  * @param {import('express').Response} res
@@ -111,8 +122,6 @@ function modelsHandler(_req, res) {
     })),
   });
 }
-
-// OpenAI-compatible response builders
 
 /**
  * @param {string} id
@@ -212,8 +221,6 @@ async function handleChat(gemini, res, id, model, prompt, metadata) {
   }
 }
 
-// ── App factory ────────────────────────────────────────────
-
 /** @returns {Promise<express.Application>} */
 export async function createApp() {
   const gemini = await getClient();
@@ -237,7 +244,7 @@ export async function createApp() {
       }
 
       const selectedModel = SUPPORTED_MODELS.includes(model) ? model : DEFAULT_MODEL;
-      const { prompt, metadata } = findLastUserMessage(messages);
+      const { prompt, metadata } = processMessages(messages);
 
       if (!prompt) {
         return res.status(400).json({ error: { message: 'No user message found' } });
