@@ -86,28 +86,14 @@ describe('processMessages', () => {
     assert.equal(metadata, null);
   });
 
-  it('uses metadata from the last assistant message', () => {
-    const meta = ['ctx_token', '', '', null, null, null, null, null, null, null, ''];
+  it('ignores assistant metadata and uses text context instead', () => {
+    const meta = ['ctx_token', ''];
     const { prompt, metadata } = processMessages([
       { role: 'user', content: 'Hi' },
       { role: 'assistant', content: 'Hello', metadata: meta },
       { role: 'user', content: 'Bye' },
     ]);
     assert.equal(prompt, 'User: Hi\nAssistant: Hello\nUser: Bye');
-    assert.deepEqual(metadata, meta);
-  });
-
-  it('picks last assistant metadata when multiple exist', () => {
-    const meta1 = ['first'];
-    const meta2 = ['second'];
-    const { prompt, metadata } = processMessages([
-      { role: 'user', content: 'A' },
-      { role: 'assistant', content: 'B', metadata: meta1 },
-      { role: 'user', content: 'C' },
-      { role: 'assistant', content: 'D', metadata: meta2 },
-      { role: 'user', content: 'E' },
-    ]);
-    assert.ok(prompt.includes('C'));
-    assert.deepEqual(metadata, meta2);
+    assert.equal(metadata, null);
   });
 });

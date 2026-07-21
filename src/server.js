@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import express from 'express';
 import { GeminiClient } from './client.js';
-import { SUPPORTED_MODELS, DEFAULT_MODEL } from './constants.js';
 
 /** @type {GeminiClient|null} */
 let client = null;
@@ -23,7 +22,6 @@ async function getClient() {
  */
 export function processMessages(messages) {
   let prompt = '';
-  let metadata = null;
   /** @type {string[]} */
   const contextParts = [];
 
@@ -33,7 +31,6 @@ export function processMessages(messages) {
     if (!prompt && msg.role === 'user') {
       prompt = msg.content;
     } else if (msg.role === 'assistant') {
-      if (!metadata && msg.metadata) { metadata = msg.metadata; }
       contextParts.unshift(`Assistant: ${msg.content}`);
     } else if (msg.role === 'user') {
       contextParts.unshift(`User: ${msg.content}`);
@@ -48,7 +45,7 @@ export function processMessages(messages) {
     prompt = `${contextParts.join('\n')}\nUser: ${prompt}`;
   }
 
-  return { prompt, metadata };
+  return { prompt, metadata: null };
 }
 
 /**
@@ -112,9 +109,10 @@ function healthHandler(_req, res) {
  * @param {import('express').Response} res
  */
 function modelsHandler(_req, res) {
+  const modelNames = Object.keys(/** @type {GeminiClient} */ (client).models);
   res.json({
     object: 'list',
-    data: SUPPORTED_MODELS.map((id) => ({
+    data: modelNames.map((id) => ({
       id,
       object: 'model',
       created: createTimestamp(),
@@ -224,6 +222,8 @@ async function handleChat(gemini, res, id, model, prompt, metadata) {
 /** @returns {Promise<express.Application>} */
 export async function createApp() {
   const gemini = await getClient();
+  const modelNames = Object.keys(gemini.models);
+  const defaultModel = modelNames[0];
   const app = express();
 
   app.use(express.json({ limit: '10mb' }));
@@ -235,7 +235,7 @@ export async function createApp() {
   app.post(
     '/v1/chat/completions',
     asyncHandler(async (/** @type {express.Request} */ req, /** @type {express.Response} */ res) => {
-      const { model = DEFAULT_MODEL, messages, stream = false } = req.body;
+      const { model = defaultModel, messages, stream = false } = req.body;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         return res.status(400).json({
@@ -243,7 +243,7 @@ export async function createApp() {
         });
       }
 
-      const selectedModel = SUPPORTED_MODELS.includes(model) ? model : DEFAULT_MODEL;
+      const selectedModel = modelNames.includes(model) ? model : defaultModel;
       const { prompt, metadata } = processMessages(messages);
 
       if (!prompt) {

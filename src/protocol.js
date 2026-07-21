@@ -62,10 +62,21 @@ export function buildRequestHeaders(cookies, modelId) {
 export function buildInnerPayload(prompt, language, metadata) {
   const payload = new Array(69).fill(null);
 
+  let reqMetadata = DEFAULT_METADATA;
+  if (metadata) {
+    if (Array.isArray(metadata) && metadata.length > 0 && metadata.length < 10) {
+      reqMetadata = [...DEFAULT_METADATA];
+      reqMetadata[0] = String(metadata[0] ?? '');
+      reqMetadata[1] = String(metadata[1] ?? '');
+    } else {
+      reqMetadata = metadata;
+    }
+  }
+
   // User input
   payload[F.PROMPT] = [prompt, 0, null, null, null, null, 0];
   payload[F.LANGUAGE] = [language];
-  payload[F.METADATA] = metadata || DEFAULT_METADATA;
+  payload[F.METADATA] = reqMetadata;
 
   // Safety & behavior flags
   payload[F.SAFETY_SETTINGS] = [1];

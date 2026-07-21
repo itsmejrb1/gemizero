@@ -8,6 +8,16 @@ const INIT_REQID = Math.floor(Math.random() * 90000) + 10000;
 const REQID_STEP = 100000;
 const MAX_CONCURRENCY = 3;
 
+/** @type {Record<string, string>} */
+const KNOWN_MODEL_IDS = {
+  'fbb127bbb056c959': 'gemini-3-flash',
+  '9d8ca3786ebdfbea': 'gemini-3-pro',
+  '5bf011840784117a': 'gemini-3-flash-thinking',
+  'e6fa609c3fa255c0': 'gemini-3-pro-plus',
+  '56fdd199312815e2': 'gemini-3-flash-plus',
+  'e051ce1aa80aa576': 'gemini-3-flash-thinking-plus',
+};
+
 export class GeminiClient {
   #cookies = '';
   #buildLabel = null;
@@ -15,12 +25,17 @@ export class GeminiClient {
   #language = 'en-US';
   #reqid = INIT_REQID;
   #modelId = MODEL_IDS['gemini-3-flash'];
+  /** @type {Record<string, string>} */
+  #models = MODEL_IDS;
   #ready = false;
   #concurrency = 0;
   /** @type {(() => void)[]} */
   #resolveQueue = [];
 
   get ready() { return this.#ready; }
+
+  /** @returns {Record<string, string>} */
+  get models() { return this.#models; }
 
   /**
    * @param {string} [cookieStr]
@@ -42,7 +57,40 @@ export class GeminiClient {
     this.#buildLabel = wiz.cfb2h || null;
     this.#sessionId = wiz.FdrFJe || null;
     this.#language = wiz.TuX5cc || 'en-US';
+
+    const fetched = this.#extractModels(wiz);
+    if (fetched) { this.#models = fetched; }
+
     this.#ready = true;
+  }
+
+  /**
+   * Extract available model IDs from the init page data.
+   * Google embeds model info in WIZ_global_data under a dynamic key.
+   * The `xjRbsb` batchexecute entry contains the available model hex IDs.
+   * @param {Record<string, any>} wiz
+   * @returns {Record<string, string>|null}
+   */
+  #extractModels(wiz) {
+    for (const val of Object.values(wiz)) {
+      if (typeof val !== 'string') { continue; }
+
+      const modelMatch = val.match(
+        /"xjRbsb",\["\[\[\\"([a-f0-9]{16}(?:\\",\\"[a-f0-9]{16})*)\\"\]\]"\]/,
+      );
+      if (!modelMatch) { continue; }
+
+      const ids = modelMatch[1].split('\\",\\"');
+
+      /** @type {Record<string, string>} */
+      const models = {};
+      for (const id of ids) {
+        const name = KNOWN_MODEL_IDS[id];
+        models[name || `model-${id.slice(0, 8)}`] = id;
+      }
+      return models;
+    }
+    return null;
   }
 
   /**
@@ -136,7 +184,6 @@ export class GeminiClient {
   }
 
   /**
-   * Limit concurrent requests to MAX_CONCURRENCY using a promise-based queue.
    * @template T
    * @param {() => Promise<T>} fn
    * @returns {Promise<T>}
@@ -177,7 +224,7 @@ export class GeminiClient {
    * @returns {{ url: string, body: string }}
    */
   #buildRequest(prompt, model, metadata) {
-    this.#modelId = MODEL_IDS[/** @type {keyof typeof MODEL_IDS} */ (model)] || MODEL_IDS['gemini-3-flash'];
+    this.#modelId = this.#models[model] || this.#models[Object.keys(this.#models)[0]];
     const payload = buildInnerPayload(prompt, this.#language, metadata);
     const req = buildGenerateRequest(payload, {
       buildLabel: this.#buildLabel,
